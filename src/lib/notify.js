@@ -1,6 +1,9 @@
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
-import { db } from './firebase'
+import { getFunctions, httpsCallable } from 'firebase/functions'
+import { app } from './firebase'
 import { STATUS_CONFIG } from '../data/ticketConfig'
+
+const functions = getFunctions(app)
+const sendEmailFn = httpsCallable(functions, 'sendEmail')
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -27,17 +30,11 @@ function emailShell(content) {
   </div>`
 }
 
-// ─── Send helpers ────────────────────────────────────────────────────────────
-
 async function sendMail(to, subject, html, text) {
   try {
-    await addDoc(collection(db, 'mail'), {
-      to,
-      message: { subject, html, text },
-      createdAt: serverTimestamp(),
-    })
+    await sendEmailFn({ to, subject, html, text })
   } catch (e) {
-    console.warn('[notify] mail write failed (Trigger Email extension needed):', e.message)
+    console.warn('[notify] sendEmail failed:', e.message)
   }
 }
 
@@ -66,7 +63,7 @@ export async function notifyClientTicketCreated(ticket) {
 export async function notifyAdminTicketCreated(ticket, adminEmail) {
   if (!adminEmail) return
   const num = ticketNum(ticket)
-  const subject = `🎫 Nuevo ticket #${num} — ${ticket.title}`
+  const subject = `Nuevo ticket #${num} — ${ticket.title}`
   const html = emailShell(`
     <h2 style="font-size:18px;font-weight:700;margin:0 0 16px">Nuevo ticket de soporte</h2>
     <p>Se creó un nuevo ticket en tu panel.</p>
@@ -75,7 +72,7 @@ export async function notifyAdminTicketCreated(ticket, adminEmail) {
       <p style="margin:0 0 8px;font-weight:700;font-size:16px">#${num} — ${ticket.title}</p>
       <p style="margin:0 0 4px;font-size:13px;color:#64748b">👤 ${ticket.clientName} &lt;${ticket.clientEmail}&gt;</p>
       ${ticket.clientCompany ? `<p style="margin:0 0 4px;font-size:13px;color:#64748b">🏢 ${ticket.clientCompany}</p>` : ''}
-      <p style="margin:0 0 4px;font-size:13px;color:#64748b">⚡ Prioridad: <strong>${ticket.priority}</strong></p>
+      <p style="margin:0 0 4px;font-size:13px;color:#64748b">Prioridad: <strong>${ticket.priority}</strong></p>
       ${ticket.description ? `<p style="margin:12px 0 0;font-size:13px;color:#374151;white-space:pre-wrap">${ticket.description.slice(0, 200)}${ticket.description.length > 200 ? '…' : ''}</p>` : ''}
     </div>
   `)
