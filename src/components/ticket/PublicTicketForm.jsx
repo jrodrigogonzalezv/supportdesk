@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, addDoc, serverTimestamp, doc, updateDoc, runTransaction } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, doc, updateDoc, runTransaction, getDoc } from 'firebase/firestore'
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '../../lib/firebase'
 import { DEFAULT_CATEGORIES, PRIORITY_CONFIG } from '../../data/ticketConfig'
@@ -44,13 +44,21 @@ export default function PublicTicketForm({ orgId, empresa, portalSlug = null, cl
       const orgRef = doc(db, 'organizations', orgId)
       let ticketNumber = 1
       let adminEmail = ''
+      let ownerId = ''
       await runTransaction(db, async tx => {
         const orgSnap = await tx.get(orgRef)
         const orgData = orgSnap.data() || {}
         ticketNumber = (orgData.ticketCounter || 0) + 1
         adminEmail = orgData.adminEmail || ''
+        ownerId = orgData.ownerId || ''
         tx.update(orgRef, { ticketCounter: ticketNumber })
       })
+
+      // Fallback: if adminEmail missing, get it from the owner's user doc
+      if (!adminEmail && ownerId) {
+        const ownerSnap = await getDoc(doc(db, 'users', ownerId))
+        adminEmail = ownerSnap.data()?.email || ''
+      }
 
       const ticketData = {
         orgId,

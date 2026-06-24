@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, onSnapshot, updateDoc, serverTimestamp, collection, query, orderBy } from 'firebase/firestore'
+import { doc, onSnapshot, updateDoc, serverTimestamp, collection, query, orderBy, addDoc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
 import CommentThread from '../components/ticket/CommentThread'
 import AttachmentList from '../components/ticket/AttachmentList'
 import { PRIORITY_CONFIG, RISK_CONFIG, STATUS_CONFIG, KANBAN_COLUMNS, DEFAULT_CATEGORIES } from '../data/ticketConfig'
-import { ArrowLeft, Clock, User } from 'lucide-react'
+import { ArrowLeft, Clock, User, Monitor } from 'lucide-react'
+import { sendRemoteSessionInvite, sendRemoteSessionReady } from '../lib/notify'
 import { formatDate } from '../utils/date'
 
 export default function TicketDetailPage() {
@@ -17,6 +18,11 @@ export default function TicketDetailPage() {
   const [comments, setComments] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [remoteSent, setRemoteSent] = useState(false)
+  const [remoteSending, setRemoteSending] = useState(false)
+  const [clientRustDeskId, setClientRustDeskId] = useState('')
+  const [idInput, setIdInput] = useState('')
+  const [savingId, setSavingId] = useState(false)
 
   const isAgent = ['admin', 'agent'].includes(user?.profile?.role)
   const orgId = user?.profile?.orgId
@@ -33,6 +39,55 @@ export default function TicketDetailPage() {
     const q = query(collection(db, 'tickets', id, 'comments'), orderBy('createdAt', 'asc'))
     return onSnapshot(q, snap => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
   }, [id])
+
+  useEffect(() => {
+    if (!ticket?.clientEmail || !ticket?.orgId) return
+    getDoc(doc(db, 'organizations', ticket.orgId, 'clients', ticket.clientEmail)).then(snap => {
+      const saved = snap.data()?.rustDeskId || ''
+      setClientRustDeskId(saved)
+      setIdInput(saved)
+    })
+  }, [ticket?.clientEmail, ticket?.orgId])
+
+  async function saveClientRustDeskId() {
+    const trimmed = idInput.trim()
+    if (!trimmed || trimmed === clientRustDeskId) return
+    setSavingId(true)
+    try {
+      await setDoc(
+        doc(db, 'organizations', ticket.orgId, 'clients', ticket.clientEmail),
+        { rustDeskId: trimmed, clientName: ticket.clientName || '', updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+      setClientRustDeskId(trimmed)
+    } finally { setSavingId(false) }
+  }
+
+  async function startRemoteSession() {
+    if (!ticket?.clientEmail) return
+    setRemoteSending(true)
+    try {
+      const portalUrl = ticket.portalSlug ? `${window.location.origin}/${ticket.portalSlug}` : null
+      if (clientRustDeskId) {
+        await sendRemoteSessionReady(ticket, portalUrl)
+      } else {
+        await sendRemoteSessionInvite(ticket, portalUrl)
+      }
+      await addDoc(collection(db, 'tickets', id, 'comments'), {
+        content: clientRustDeskId
+          ? `Sesión remota iniciada. Aviso enviado a ${ticket.clientEmail} para que abra RustDesk y acepte la conexión (ID guardado: ${clientRustDeskId}).`
+          : `Sesión remota solicitada. Email enviado a ${ticket.clientEmail} pidiendo que comparta su ID de RustDesk como comentario.`,
+        isInternal: true,
+        authorName: 'Sistema',
+        authorId: null,
+        createdAt: serverTimestamp(),
+      })
+      setRemoteSent(true)
+      setTimeout(() => setRemoteSent(false), 4000)
+    } finally {
+      setRemoteSending(false)
+    }
+  }
 
   async function update(field, value) {
     setSaving(true)
@@ -152,6 +207,50 @@ export default function TicketDetailPage() {
                 <span className="text-xs text-slate-500">{formatDate(ticket.createdAt)}</span>
               </div>
             </div>
+
+            {ticket.clientEmail && (
+              <div className="pt-3 border-t border-slate-100 space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
+                    RustDesk ID del cliente
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      value={idInput}
+                      onChange={e => setIdInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && saveClientRustDeskId()}
+                      onBlur={saveClientRustDeskId}
+                      className="flex-1 text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-800 font-mono tracking-widest min-w-0"
+                      placeholder="123456789"
+                    />
+                    {savingId && (
+                      <span className="text-xs text-slate-400 self-center">...</span>
+                    )}
+                  </div>
+                  {clientRustDeskId && (
+                    <p className="text-[11px] text-emerald-600 mt-1">✓ ID guardado para este cliente</p>
+                  )}
+                </div>
+                <button
+                  onClick={startRemoteSession}
+                  disabled={remoteSending || remoteSent}
+                  className={`w-full flex items-center justify-center gap-2 text-sm font-medium px-4 py-2.5 rounded-xl transition-colors ${
+                    remoteSent
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white'
+                  }`}
+                >
+                  <Monitor className="w-4 h-4" />
+                  {remoteSent
+                    ? '✓ Enviado'
+                    : remoteSending
+                    ? 'Enviando...'
+                    : clientRustDeskId
+                    ? 'Iniciar sesión remota'
+                    : 'Solicitar ID al cliente'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

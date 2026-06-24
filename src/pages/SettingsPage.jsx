@@ -222,7 +222,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <button onClick={handleSave} disabled={saving}
+<button onClick={handleSave} disabled={saving}
         className="flex items-center gap-2 bg-blue-800 hover:bg-blue-900 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors shadow-sm">
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
         {saved ? '¡Guardado!' : 'Guardar categorías'}

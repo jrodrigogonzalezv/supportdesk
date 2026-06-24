@@ -55,6 +55,29 @@ Sistema de soporte multi-tenant SaaS. Stack: React + Vite + Tailwind v4 + Fireba
 - `ticket-attachments/{orgId}/{ticketId}/{fileId}.ext`
 - Regla: allow read, write (sin auth para que clientes suban desde `/new-ticket`)
 
+## Sesión 3 — 2026-06-24
+
+### Completado
+- **Soporte remoto RustDesk** — flujo corregido: es el cliente quien tiene el ID, no el agente
+- `src/lib/notify.js`:
+  - `sendRemoteSessionInvite(ticket, portalUrl)` — primera vez: pide al cliente que abra RustDesk, copie su ID y lo comparta como comentario en el ticket
+  - `sendRemoteSessionReady(ticket, portalUrl)` — sesiones siguientes: solo avisa al cliente que abra RustDesk y acepte la solicitud
+- `src/pages/TicketDetailPage.jsx`:
+  - Campo editable "RustDesk ID del cliente" en sidebar del agente
+  - Guarda el ID en `organizations/{orgId}/clients/{clientEmail}` (subcollection) al perder el foco o presionar Enter — persiste entre tickets del mismo cliente
+  - Se carga automáticamente al abrir un ticket del mismo cliente
+  - Botón cambia según estado: sin ID → "Solicitar ID al cliente" / con ID → "Iniciar sesión remota"
+  - Comentario interno auto-generado en el ticket con el detalle de la acción
+- `src/pages/SettingsPage.jsx` — eliminado campo "RustDesk ID del agente" (ya no aplica)
+
+### Firestore paths nuevos
+- `organizations/{orgId}/clients/{clientEmail}` — `{ rustDeskId, clientName, updatedAt }`
+
+### Pendiente
+- Tighten Firestore security rules (actualmente `allow read, write: if true`)
+- Code splitting para reducir bundle (actualmente ~958KB, Vite advierte >500KB)
+- WhatsApp via Twilio (mencionado, no implementado)
+
 ## SEGURIDAD
 
 **Twilio Account SID y Auth Token NUNCA en CLAUDE.md ni archivos git-tracked.**
