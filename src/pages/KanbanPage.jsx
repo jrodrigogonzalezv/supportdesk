@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../hooks/useAuth'
 import KanbanBoard from '../components/kanban/KanbanBoard'
@@ -55,9 +55,14 @@ export default function KanbanPage() {
   useEffect(() => {
     if (!orgId) { setLoading(false); return }
     setLoading(true)
-    const q = query(collection(db, 'tickets'), where('orgId', '==', orgId), orderBy('createdAt', 'desc'))
+    const q = query(collection(db, 'tickets'), where('orgId', '==', orgId))
     return onSnapshot(q,
-      snap => { setTickets(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false) },
+      snap => {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+        setTickets(list)
+        setLoading(false)
+      },
       err => { console.error('[Kanban]', err.code, err.message); setLoading(false) }
     )
   }, [orgId])

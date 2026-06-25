@@ -22,11 +22,15 @@ export default function PortalKanbanPage() {
 
   useEffect(() => {
     if (!portal) return
+    if (!portal.orgId) return
     const q = query(collection(db, 'tickets'), where('orgId', '==', portal.orgId))
-    return onSnapshot(q, snap => {
-      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      setTickets(all.filter(t => t.portalSlug === slug || t.clientCompany === portal.companyName))
-    })
+    return onSnapshot(q,
+      snap => {
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        setTickets(all.filter(t => t.portalSlug === slug || t.clientCompany === portal.companyName))
+      },
+      err => console.error('[PortalKanban]', err.code, err.message)
+    )
   }, [portal, slug])
 
   if (portalState === 'loading') return (

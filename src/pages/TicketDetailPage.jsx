@@ -37,7 +37,11 @@ export default function TicketDetailPage() {
 
   useEffect(() => {
     const q = query(collection(db, 'tickets', id, 'comments'), orderBy('createdAt', 'asc'))
-    return onSnapshot(q, snap => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+    return onSnapshot(
+      q,
+      snap => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err => console.error('[comments]', err.code, err.message)
+    )
   }, [id])
 
   useEffect(() => {
@@ -68,22 +72,43 @@ export default function TicketDetailPage() {
     setRemoteSending(true)
     try {
       const portalUrl = ticket.portalSlug ? `${window.location.origin}/${ticket.portalSlug}` : null
-      if (clientRustDeskId) {
-        await sendRemoteSessionReady(ticket, portalUrl)
-      } else {
-        await sendRemoteSessionInvite(ticket, portalUrl)
-      }
+      const hasId = !!clientRustDeskId
+      const commentContent = hasId
+        ? `Sesión remota iniciada. Aviso enviado a ${ticket.clientEmail} para que abra RustDesk y acepte la conexión (ID guardado: ${clientRustDeskId}).`
+        : `Sesión remota solicitada. Email enviado a ${ticket.clientEmail} pidiendo que comparta su ID de RustDesk como comentario.`
+
+      // Crear comentario interno primero, independiente del email
       await addDoc(collection(db, 'tickets', id, 'comments'), {
-        content: clientRustDeskId
-          ? `Sesión remota iniciada. Aviso enviado a ${ticket.clientEmail} para que abra RustDesk y acepte la conexión (ID guardado: ${clientRustDeskId}).`
-          : `Sesión remota solicitada. Email enviado a ${ticket.clientEmail} pidiendo que comparta su ID de RustDesk como comentario.`,
+        content: commentContent,
         isInternal: true,
         authorName: 'Sistema',
         authorId: null,
         createdAt: serverTimestamp(),
       })
+
+      // Guardar estado de sesión remota en el ticket
+      await updateDoc(doc(db, 'tickets', id), {
+        remoteSession: {
+          status: hasId ? 'ready' : 'pending_id',
+          requestedAt: serverTimestamp(),
+          requestedBy: user?.displayName || user?.email || 'Agente',
+          rustDeskId: clientRustDeskId || null,
+        },
+        updatedAt: serverTimestamp(),
+      })
+
+      // Enviar email (no bloquea si falla)
+      try {
+        if (hasId) await sendRemoteSessionReady(ticket, portalUrl)
+        else await sendRemoteSessionInvite(ticket, portalUrl)
+      } catch (e) {
+        console.warn('[remote] email error:', e.message)
+      }
+
       setRemoteSent(true)
       setTimeout(() => setRemoteSent(false), 4000)
+    } catch (e) {
+      console.error('[remote] error:', e)
     } finally {
       setRemoteSending(false)
     }
@@ -207,6 +232,22 @@ export default function TicketDetailPage() {
                 <span className="text-xs text-slate-500">{formatDate(ticket.createdAt)}</span>
               </div>
             </div>
+
+            {ticket.remoteSession && (
+              <div className={`pt-3 border-t border-slate-100 rounded-xl px-3 py-2.5 text-xs space-y-1 ${
+                ticket.remoteSession.status === 'pending_id'
+                  ? 'bg-amber-50 border border-amber-200'
+                  : 'bg-emerald-50 border border-emerald-200'
+              }`}>
+                <p className={`font-semibold ${ticket.remoteSession.status === 'pending_id' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {ticket.remoteSession.status === 'pending_id' ? '⏳ ID de RustDesk solicitado' : '✓ Sesión remota lista'}
+                </p>
+                <p className="text-slate-500">Por {ticket.remoteSession.requestedBy}</p>
+                {ticket.remoteSession.rustDeskId && (
+                  <p className="font-mono text-slate-700">ID: {ticket.remoteSession.rustDeskId}</p>
+                )}
+              </div>
+            )}
 
             {ticket.clientEmail && (
               <div className="pt-3 border-t border-slate-100 space-y-3">
