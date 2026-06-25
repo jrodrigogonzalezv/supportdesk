@@ -6,7 +6,7 @@ import { db, auth, isSignInWithEmailLink, signInWithEmailLink } from '../lib/fir
 import PublicTicketForm from '../components/ticket/PublicTicketForm'
 import ClientAuthPanel from '../components/portal/ClientAuthPanel'
 import ClientTicketHistory from '../components/portal/ClientTicketHistory'
-import { Ticket, LogOut, User, ChevronDown, Columns } from 'lucide-react'
+import { Ticket, LogOut, User, ChevronDown, Columns, Plus, LayoutGrid } from 'lucide-react'
 
 export default function SlugTicketPage() {
   const { slug } = useParams()
@@ -21,6 +21,7 @@ export default function SlugTicketPage() {
   const [showAuthPanel, setShowAuthPanel] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [historyKey, setHistoryKey] = useState(0)
+  const [showFormMobile, setShowFormMobile] = useState(false)
 
   // Resolve portal slug
   useEffect(() => {
@@ -88,7 +89,7 @@ export default function SlugTicketPage() {
   const requireLogin = portal.requireLogin ?? true
   const isClient = clientUser !== null && userRole === 'client'
 
-  // ── CASE 1: Login required + not authenticated ──
+  // ── Login gate ──
   if (clientUser === null && requireLogin) return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -99,9 +100,7 @@ export default function SlugTicketPage() {
           <h1 className="text-xl font-bold text-slate-900">
             {portal.companyName ? `Soporte · ${portal.companyName}` : 'Portal de soporte'}
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Inicia sesión para crear o ver tus tickets.
-          </p>
+          <p className="text-slate-500 text-sm mt-1">Inicia sesión para crear o ver tus tickets.</p>
         </div>
         <ClientAuthPanel />
         <div className="mt-4 text-center">
@@ -115,36 +114,40 @@ export default function SlugTicketPage() {
     </div>
   )
 
-  // ── CASES 2 & 3: Form visible (optional or confirmed login) ──
+  // ── Two-column portal ──
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Sticky top bar */}
+      {/* Top bar */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-20">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-blue-800 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Ticket className="w-4 h-4 text-white" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-900 text-sm">Soporte</span>
-              {portal.companyName && (
-                <span className="text-xs font-semibold text-white bg-blue-800 rounded-full px-2.5 py-0.5">
-                  {portal.companyName}
-                </span>
-              )}
-            </div>
+            <img src="/logo.png" alt="Logo" className="h-9 w-auto max-w-[180px] object-contain" />
+            {portal.companyName && (
+              <span className="text-xs font-semibold text-white bg-blue-800 rounded-full px-2.5 py-0.5">
+                {portal.companyName}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Kanban link */}
             <Link to={`/${slug}/kanban`}
               className="hidden sm:flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-700 transition-colors">
-              <Columns className="w-3.5 h-3.5" />
+              <LayoutGrid className="w-3.5 h-3.5" />
               Tablero
             </Link>
 
+            {/* Mobile: toggle form button */}
+            {isClient && (
+              <button
+                onClick={() => setShowFormMobile(v => !v)}
+                className="lg:hidden flex items-center gap-1.5 text-xs font-semibold bg-blue-800 text-white px-3 py-1.5 rounded-xl"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Nuevo ticket
+              </button>
+            )}
+
             {clientUser ? (
-              /* User menu */
               <div className="relative">
                 <button onClick={() => setShowUserMenu(m => !m)}
                   className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl px-3 py-1.5 transition-colors">
@@ -154,7 +157,6 @@ export default function SlugTicketPage() {
                   </span>
                   <ChevronDown className="w-3 h-3" />
                 </button>
-
                 {showUserMenu && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowUserMenu(false)} />
@@ -173,7 +175,6 @@ export default function SlugTicketPage() {
                 )}
               </div>
             ) : (
-              /* Optional login button (requireLogin: false) */
               <button onClick={() => setShowAuthPanel(s => !s)}
                 className={`text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors border ${showAuthPanel ? 'bg-blue-800 text-white border-blue-800' : 'text-blue-800 border-blue-200 hover:bg-blue-50'}`}>
                 Iniciar sesión
@@ -183,39 +184,66 @@ export default function SlugTicketPage() {
         </div>
       </div>
 
-      {/* Optional auth panel */}
-      {showAuthPanel && !clientUser && (
-        <div className="max-w-lg mx-auto px-4 pt-4">
-          <ClientAuthPanel onClose={() => setShowAuthPanel(false)} />
-        </div>
-      )}
+      {/* Two-column layout */}
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
 
-      {/* Ticket form */}
-      <PublicTicketForm
-        orgId={portal.orgId}
-        empresa={portal.companyName}
-        portalSlug={slug}
-        clientUser={isClient ? clientUser : null}
-        compact
-        onTicketCreated={() => setHistoryKey(k => k + 1)}
-      />
+          {/* Left: ticket list + stats */}
+          <div className="flex-1 min-w-0">
+            {showAuthPanel && !clientUser && (
+              <div className="mb-4">
+                <ClientAuthPanel onClose={() => setShowAuthPanel(false)} />
+              </div>
+            )}
 
-      {/* Ticket history — only for authenticated clients */}
-      {isClient && (
-        <div className="max-w-lg mx-auto px-4 pb-10">
-          <div className="border-t border-slate-200 pt-6 mb-4">
-            <h2 className="text-sm font-semibold text-slate-700">Mis tickets anteriores</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Haz click en un ticket para ver el detalle y las respuestas del equipo.
-            </p>
+            {isClient ? (
+              <ClientTicketHistory
+                key={historyKey}
+                clientEmail={clientUser.email}
+                orgId={portal.orgId}
+                showStats
+                slug={slug}
+              />
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
+                <Ticket className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-sm font-semibold text-slate-700 mb-1">Inicia sesión para ver tus tickets</p>
+                <p className="text-xs text-slate-400 mb-4">Ingresa con tu email y recibirás un link de acceso.</p>
+                <button
+                  onClick={() => setShowAuthPanel(true)}
+                  className="text-xs font-semibold text-blue-800 border border-blue-200 hover:bg-blue-50 px-4 py-2 rounded-xl transition-colors"
+                >
+                  Iniciar sesión
+                </button>
+              </div>
+            )}
           </div>
-          <ClientTicketHistory
-            key={historyKey}
-            clientEmail={clientUser.email}
-            orgId={portal.orgId}
-          />
+
+          {/* Right: new ticket form (sticky on desktop, toggled on mobile) */}
+          <div className={`w-full lg:w-[420px] lg:flex-shrink-0 lg:sticky lg:top-20 ${isClient && !showFormMobile ? 'hidden lg:block' : 'block'}`}>
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="px-5 pt-5 pb-2 border-b border-slate-100">
+                <h2 className="text-sm font-bold text-slate-900">Crear ticket de soporte</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Cuéntanos tu problema y te ayudamos lo antes posible.</p>
+              </div>
+              <div className="p-5">
+                <PublicTicketForm
+                  orgId={portal.orgId}
+                  empresa={portal.companyName}
+                  portalSlug={slug}
+                  clientUser={isClient ? clientUser : null}
+                  compact
+                  onTicketCreated={() => {
+                    setHistoryKey(k => k + 1)
+                    setShowFormMobile(false)
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
         </div>
-      )}
+      </div>
     </div>
   )
 }

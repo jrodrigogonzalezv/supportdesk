@@ -18,11 +18,8 @@ const baseStyle = `
 
 function emailShell(content) {
   return `<div style="${baseStyle}">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px">
-      <div style="width:32px;height:32px;background:#1e40af;border-radius:8px;display:flex;align-items:center;justify-content:center">
-        <span style="color:#fff;font-weight:700;font-size:14px">SD</span>
-      </div>
-      <span style="font-weight:700;font-size:15px">SupportDesk</span>
+    <div style="margin-bottom:28px">
+      <img src="https://system-soporte.web.app/logo.png" alt="Logo" style="height:40px;width:auto;display:block" />
     </div>
     ${content}
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
@@ -97,8 +94,15 @@ export async function sendRemoteSessionInvite(ticket, portalUrl) {
         <a href="https://rustdesk.com/es/" style="color:#1d4ed8">https://rustdesk.com/es/</a>
       </p>
       <p style="margin:0 0 12px;font-size:13px;color:#1e293b"><strong>2.</strong> Abre RustDesk — en la pantalla principal verás tu <strong>ID</strong> (un número de 9 dígitos).</p>
-      <p style="margin:0;font-size:13px;color:#1e293b"><strong>3.</strong> Comparte ese ID con tu técnico${portalUrl ? ` respondiendo como comentario en <a href="${portalUrl}" style="color:#1d4ed8">tu ticket</a>` : ' por el canal que te indique'}.</p>
+      <p style="margin:0;font-size:13px;color:#1e293b"><strong>3.</strong> Comparte ese ID con tu técnico usando el botón de abajo.</p>
     </div>
+
+    ${portalUrl ? `
+    <div style="text-align:center;margin:24px 0">
+      <a href="${portalUrl}" style="display:inline-block;background:#1e40af;color:#fff;font-weight:700;font-size:14px;padding:14px 28px;border-radius:12px;text-decoration:none">
+        Ver mi ticket y enviar mi ID →
+      </a>
+    </div>` : ''}
 
     <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:16px;margin:20px 0">
       <p style="margin:0 0 6px;font-size:11px;color:#16a34a;font-weight:700;text-transform:uppercase">Tu técnico hará el resto</p>
@@ -134,6 +138,25 @@ export async function sendRemoteSessionReady(ticket, portalUrl) {
   `)
   const text = `Hola ${ticket.clientName || ticket.clientEmail},\n\nTu técnico va a conectarse para resolver el ticket #${num}.\n\n1. Abre RustDesk en tu equipo\n2. Cuando aparezca la solicitud, haz clic en Aceptar\n\nPuedes cerrar la sesión en cualquier momento.${portalUrl ? `\n\nVer tu ticket: ${portalUrl}` : ''}`
   await sendMail(ticket.clientEmail, subject, html, text)
+}
+
+// ─── Agent: client shared RustDesk ID ───────────────────────────────────────
+
+export async function notifyAgentRustDeskId(ticket, agentEmail, rustDeskId) {
+  if (!agentEmail || !rustDeskId) return
+  const num = ticketNum(ticket)
+  const subject = `ID de RustDesk recibido — Ticket #${num}`
+  const html = emailShell(`
+    <h2 style="font-size:18px;font-weight:700;margin:0 0 16px">El cliente compartió su ID de RustDesk</h2>
+    <p><strong>${ticket.clientName || ticket.clientEmail}</strong> respondió a tu solicitud de acceso remoto para el ticket <strong>#${num} "${ticket.title}"</strong>.</p>
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:24px;margin:20px 0;text-align:center">
+      <p style="margin:0 0 8px;font-size:11px;color:#1d4ed8;font-weight:700;text-transform:uppercase;letter-spacing:1px">ID de RustDesk del cliente</p>
+      <p style="margin:0;font-size:32px;font-weight:700;letter-spacing:6px;font-family:monospace;color:#1e293b">${rustDeskId}</p>
+    </div>
+    <p style="font-size:13px;color:#64748b">Ingresa este ID en RustDesk para iniciar la sesión remota. El cliente ya está esperando tu conexión.</p>
+  `)
+  const text = `${ticket.clientName || ticket.clientEmail} compartió su ID de RustDesk para el ticket #${num} "${ticket.title}".\n\nID: ${rustDeskId}\n\nIngresa este ID en RustDesk para conectarte.`
+  await sendMail(agentEmail, subject, html, text)
 }
 
 // ─── Client: status changed ──────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { Loader2, Ticket } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
   const { loginWithGoogle, loginWithEmail, registerWithEmail } = useAuth()
@@ -36,11 +36,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <div className="flex items-center justify-center gap-2.5 mb-8">
-          <div className="w-9 h-9 bg-blue-800 rounded-xl flex items-center justify-center">
-            <Ticket className="w-5 h-5 text-white" />
-          </div>
-          <span className="text-xl font-bold text-slate-900">SupportDesk</span>
+        <div className="flex items-center justify-center mb-8">
+          <img src="/logo.png" alt="Logo" className="h-14 w-auto max-w-[220px] object-contain" />
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">

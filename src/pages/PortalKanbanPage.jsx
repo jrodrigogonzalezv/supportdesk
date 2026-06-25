@@ -4,7 +4,7 @@ import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/fire
 import { db } from '../lib/firebase'
 import { KANBAN_COLUMNS, STATUS_CONFIG, PRIORITY_CONFIG } from '../data/ticketConfig'
 import { timeAgo } from '../utils/date'
-import { Ticket, Plus, Columns } from 'lucide-react'
+import { Plus, Columns } from 'lucide-react'
 
 export default function PortalKanbanPage() {
   const { slug } = useParams()
@@ -67,9 +67,7 @@ export default function PortalKanbanPage() {
       <div className="bg-white border-b border-slate-200 sticky top-0 z-20 flex-shrink-0">
         <div className="px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-blue-800 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Ticket className="w-4 h-4 text-white" />
-            </div>
+            <img src="/logo.png" alt="Logo" className="h-9 w-auto max-w-[160px] object-contain flex-shrink-0" />
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-900 text-sm">{portal.companyName}</span>

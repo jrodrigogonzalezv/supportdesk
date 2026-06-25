@@ -28,11 +28,9 @@ function SidebarContent({ collapsed, onNavClick }) {
   return (
     <>
       {/* Logo */}
-      <div className="p-4 border-b border-slate-100 flex items-center gap-2.5 min-h-[57px]">
-        <div className="w-7 h-7 bg-blue-800 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Ticket className="w-4 h-4 text-white" />
-        </div>
-        {!collapsed && <span className="font-bold text-slate-900 text-sm">SupportDesk</span>}
+      <div className="p-4 border-b border-slate-100 flex items-center min-h-[57px]">
+        <img src="/logo.png" alt="Logo"
+          className={collapsed ? 'h-9 w-9 object-contain' : 'h-9 w-auto max-w-[180px] object-contain'} />
       </div>
 
       {/* Nav */}
@@ -119,12 +117,7 @@ export default function AppLayout() {
           <button onClick={() => setMobileOpen(true)} className="text-slate-600 hover:text-slate-900 transition-colors p-1">
             <Menu className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-blue-800 rounded-lg flex items-center justify-center">
-              <Ticket className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-slate-900 text-sm">SupportDesk</span>
-          </div>
+          <img src="/logo.png" alt="Logo" className="h-9 w-auto max-w-[180px] object-contain" />
         </div>
 
         <main className="flex-1 overflow-auto">
