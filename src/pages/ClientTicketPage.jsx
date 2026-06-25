@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { doc, onSnapshot, collection, query, orderBy, addDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot, collection, query, orderBy, addDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth, db } from '../lib/firebase'
 import { STATUS_CONFIG, PRIORITY_CONFIG } from '../data/ticketConfig'
 import CommentThread from '../components/ticket/CommentThread'
-import { ArrowLeft, Loader2, Ticket, Monitor, Send } from 'lucide-react'
+import { ArrowLeft, Loader2, Monitor, Send } from 'lucide-react'
 import { formatDate } from '../utils/date'
+import { notifyAgentRustDeskId } from '../lib/notify'
 
 export default function ClientTicketPage() {
   const { ticketId } = useParams()
@@ -21,10 +22,14 @@ export default function ClientTicketPage() {
   useEffect(() => onAuthStateChanged(auth, u => setClientUser(u ?? null)), [])
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'tickets', ticketId), snap => {
-      if (snap.exists()) setTicket({ id: snap.id, ...snap.data() })
-      setLoading(false)
-    })
+    const unsub = onSnapshot(
+      doc(db, 'tickets', ticketId),
+      snap => {
+        if (snap.exists()) setTicket({ id: snap.id, ...snap.data() })
+        setLoading(false)
+      },
+      err => console.error('[ClientTicketPage] snapshot error:', err.code, err.message)
+    )
     return unsub
   }, [ticketId])
 
@@ -48,6 +53,15 @@ export default function ClientTicketPage() {
   const status = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.new
   const priority = PRIORITY_CONFIG[ticket.priority] || PRIORITY_CONFIG.low
 
+  // Banner state based on most recent remote comment
+  const remoteComments = comments.filter(c => ['remote_request', 'remote_ready', 'remote_id_response'].includes(c.type))
+  const latestRemote = remoteComments[remoteComments.length - 1]
+  const showPendingBanner = latestRemote?.type === 'remote_request' && !idSent
+  const showReadyBanner = latestRemote?.type === 'remote_ready' || idSent
+
+  // Comments shown in conversation thread (exclude system remote triggers — they're shown as banners)
+  const conversationComments = comments.filter(c => !['remote_request', 'remote_ready'].includes(c.type))
+
   async function submitRustDeskId(e) {
     e.preventDefault()
     const id = rustDeskId.trim()
@@ -56,16 +70,12 @@ export default function ClientTicketPage() {
     try {
       await addDoc(collection(db, 'tickets', ticketId, 'comments'), {
         content: `Mi ID de RustDesk es: ${id}`,
+        type: 'remote_id_response',
         authorId: clientUser?.uid || null,
         authorName: ticket.clientName || ticket.clientEmail || 'Cliente',
         authorRole: 'client',
         isInternal: false,
         createdAt: serverTimestamp(),
-      })
-      await updateDoc(doc(db, 'tickets', ticketId), {
-        'remoteSession.rustDeskId': id,
-        'remoteSession.status': 'ready',
-        updatedAt: serverTimestamp(),
       })
       if (ticket.orgId && ticket.clientEmail) {
         await setDoc(
@@ -74,6 +84,15 @@ export default function ClientTicketPage() {
           { merge: true }
         )
       }
+      await updateDoc(doc(db, 'tickets', ticketId), { hasRemoteRequest: false, updatedAt: serverTimestamp() })
+      // Notificar al agente/admin por email
+      try {
+        if (ticket.orgId) {
+          const adminSnap = await getDoc(doc(db, 'users', ticket.orgId))
+          const agentEmail = adminSnap.data()?.email
+          if (agentEmail) await notifyAgentRustDeskId(ticket, agentEmail, id)
+        }
+      } catch (e) { console.warn('[rustdesk] notify agent failed:', e.message) }
       setIdSent(true)
       setRustDeskId('')
     } finally {
@@ -84,16 +103,16 @@ export default function ClientTicketPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="border-b border-slate-200 bg-white sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-blue-800 rounded-lg flex items-center justify-center">
-            <Ticket className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-semibold text-slate-900 text-sm">SupportDesk</span>
+        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center">
+          <img src="/logo.png" alt="Logo" className="h-9 w-auto max-w-[180px] object-contain" />
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-        <Link to="/portal" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors">
+        <Link
+          to={ticket?.portalSlug ? `/${ticket.portalSlug}` : '/portal'}
+          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors"
+        >
           <ArrowLeft className="w-4 h-4" /> Volver a mis tickets
         </Link>
 
@@ -117,8 +136,8 @@ export default function ClientTicketPage() {
           <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
         </div>
 
-        {/* RustDesk banner — solo cuando el técnico solicitó el ID */}
-        {ticket.remoteSession?.status === 'pending_id' && !idSent && (
+        {/* RustDesk banner — cliente debe compartir su ID */}
+        {showPendingBanner && (
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-3">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 bg-blue-800 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -158,7 +177,8 @@ export default function ClientTicketPage() {
           </div>
         )}
 
-        {(ticket.remoteSession?.status === 'ready' || idSent) && (
+        {/* Banner — técnico listo para conectar */}
+        {showReadyBanner && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
             <Monitor className="w-5 h-5 text-emerald-600 flex-shrink-0" />
             <div>
@@ -168,10 +188,10 @@ export default function ClientTicketPage() {
           </div>
         )}
 
-        {/* Comments */}
+        {/* Conversation */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">Conversación</p>
-          <CommentThread ticketId={ticketId} comments={comments} isAgent={false} />
+          <CommentThread ticketId={ticketId} comments={conversationComments} isAgent={false} />
         </div>
       </div>
     </div>

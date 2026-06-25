@@ -71,33 +71,46 @@ export default function TicketDetailPage() {
     if (!ticket?.clientEmail) return
     setRemoteSending(true)
     try {
-      const portalUrl = ticket.portalSlug ? `${window.location.origin}/${ticket.portalSlug}` : null
+      const portalUrl = `${window.location.origin}/portal/ticket/${id}`
       const hasId = !!clientRustDeskId
-      const commentContent = hasId
-        ? `Sesión remota iniciada. Aviso enviado a ${ticket.clientEmail} para que abra RustDesk y acepte la conexión (ID guardado: ${clientRustDeskId}).`
-        : `Sesión remota solicitada. Email enviado a ${ticket.clientEmail} pidiendo que comparta su ID de RustDesk como comentario.`
 
-      // Crear comentario interno primero, independiente del email
+      // Comentario interno para historial del agente
       await addDoc(collection(db, 'tickets', id, 'comments'), {
-        content: commentContent,
+        content: hasId
+          ? `Sesión remota iniciada. Aviso enviado a ${ticket.clientEmail} (ID guardado: ${clientRustDeskId}).`
+          : `Sesión remota solicitada. Email enviado a ${ticket.clientEmail} pidiendo su ID de RustDesk.`,
+        type: hasId ? 'remote_ready_internal' : 'remote_request_internal',
         isInternal: true,
         authorName: 'Sistema',
         authorId: null,
+        authorRole: 'system',
         createdAt: serverTimestamp(),
       })
 
-      // Guardar estado de sesión remota en el ticket
-      await updateDoc(doc(db, 'tickets', id), {
-        remoteSession: {
-          status: hasId ? 'ready' : 'pending_id',
-          requestedAt: serverTimestamp(),
-          requestedBy: user?.displayName || user?.email || 'Agente',
-          rustDeskId: clientRustDeskId || null,
-        },
-        updatedAt: serverTimestamp(),
+      // Comentario visible al cliente — esta es la fuente de verdad para el banner
+      await addDoc(collection(db, 'tickets', id, 'comments'), {
+        content: hasId
+          ? 'El técnico está listo para conectarse. Por favor abre RustDesk y acepta la solicitud de conexión cuando aparezca.'
+          : 'El equipo de soporte ha solicitado acceso remoto. Por favor sigue las instrucciones en tu ticket para compartir tu ID de RustDesk.',
+        type: hasId ? 'remote_ready' : 'remote_request',
+        isInternal: false,
+        authorName: 'Equipo de soporte',
+        authorId: null,
+        authorRole: 'system',
+        createdAt: serverTimestamp(),
       })
 
-      // Enviar email (no bloquea si falla)
+      // Flag denormalizado para badge en listado de tickets del cliente
+      try {
+        await updateDoc(doc(db, 'tickets', id), {
+          hasRemoteRequest: !hasId,
+          updatedAt: serverTimestamp(),
+        })
+      } catch (e) {
+        console.warn('[remote] flag update failed:', e.message)
+      }
+
+      // Enviar email
       try {
         if (hasId) await sendRemoteSessionReady(ticket, portalUrl)
         else await sendRemoteSessionInvite(ticket, portalUrl)
@@ -126,6 +139,9 @@ export default function TicketDetailPage() {
   const priority = PRIORITY_CONFIG[ticket.priority] || PRIORITY_CONFIG.low
   const status = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.new
   const selectCls = 'w-full text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-800 bg-white text-slate-800'
+
+  const remoteSystemComments = comments.filter(c => ['remote_request', 'remote_ready', 'remote_id_response'].includes(c.type))
+  const latestRemote = remoteSystemComments[remoteSystemComments.length - 1]
 
   return (
     <div className="flex flex-col h-full">
@@ -233,19 +249,23 @@ export default function TicketDetailPage() {
               </div>
             </div>
 
-            {ticket.remoteSession && (
+            {latestRemote && (
               <div className={`pt-3 border-t border-slate-100 rounded-xl px-3 py-2.5 text-xs space-y-1 ${
-                ticket.remoteSession.status === 'pending_id'
+                latestRemote.type === 'remote_request'
                   ? 'bg-amber-50 border border-amber-200'
+                  : latestRemote.type === 'remote_id_response'
+                  ? 'bg-blue-50 border border-blue-200'
                   : 'bg-emerald-50 border border-emerald-200'
               }`}>
-                <p className={`font-semibold ${ticket.remoteSession.status === 'pending_id' ? 'text-amber-700' : 'text-emerald-700'}`}>
-                  {ticket.remoteSession.status === 'pending_id' ? '⏳ ID de RustDesk solicitado' : '✓ Sesión remota lista'}
+                <p className={`font-semibold ${
+                  latestRemote.type === 'remote_request' ? 'text-amber-700'
+                  : latestRemote.type === 'remote_id_response' ? 'text-blue-700'
+                  : 'text-emerald-700'
+                }`}>
+                  {latestRemote.type === 'remote_request' && '⏳ Esperando ID de RustDesk del cliente'}
+                  {latestRemote.type === 'remote_id_response' && '✓ Cliente compartió su ID — ver conversación'}
+                  {latestRemote.type === 'remote_ready' && '🔗 Sesión remota iniciada'}
                 </p>
-                <p className="text-slate-500">Por {ticket.remoteSession.requestedBy}</p>
-                {ticket.remoteSession.rustDeskId && (
-                  <p className="font-mono text-slate-700">ID: {ticket.remoteSession.rustDeskId}</p>
-                )}
               </div>
             )}
 
