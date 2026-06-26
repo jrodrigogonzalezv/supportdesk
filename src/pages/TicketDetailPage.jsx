@@ -36,7 +36,7 @@ export default function TicketDetailPage() {
   }, [id])
 
   useEffect(() => {
-    const q = query(collection(db, 'tickets', id, 'comments'), orderBy('createdAt', 'asc'))
+    const q = query(collection(db, 'tickets', id, 'comments'), orderBy('createdAt', 'desc'))
     return onSnapshot(
       q,
       snap => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() }))),

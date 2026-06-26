@@ -34,7 +34,7 @@ export default function ClientTicketPage() {
   }, [ticketId])
 
   useEffect(() => {
-    const q = query(collection(db, 'tickets', ticketId, 'comments'), orderBy('createdAt', 'asc'))
+    const q = query(collection(db, 'tickets', ticketId, 'comments'), orderBy('createdAt', 'desc'))
     return onSnapshot(q, snap => setComments(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => !c.isInternal)))
   }, [ticketId])
 
